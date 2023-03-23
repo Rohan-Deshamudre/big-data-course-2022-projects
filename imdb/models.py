@@ -9,9 +9,8 @@ import numpy as np
 from training_set_processing import *
 
 
-def get_data(table_name):
+def get_data(df):
     # Split the data into training and test sets
-    df = get_table(table_name)
     X = df[['startYear', 'runtimeMinutes', 'numVotes']]
     y = df['label']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -19,8 +18,8 @@ def get_data(table_name):
     return X_train, X_test, y_train, y_test
 
 
-def train_SVM(table_name, data):
-    X_train, X_test, y_train, y_test = get_data(table_name)
+def train_SVM(df):
+    X_train, X_test, y_train, y_test = get_data(df)
 
     # Train an SVM classifier
     clf = SVC()
@@ -30,11 +29,11 @@ def train_SVM(table_name, data):
     y_pred = clf.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
 
-    return accuracy
+    return accuracy, y_pred
 
 
-def train_logistic_regression(table_name):
-    X_train, X_test, y_train, y_test = get_data(table_name)
+def train_logistic_regression(df):
+    X_train, X_test, y_train, y_test = get_data(df)
 
     lr_model = LogisticRegression(max_iter=1000)
     lr_model.fit(X_train, y_train)
@@ -42,11 +41,11 @@ def train_logistic_regression(table_name):
     lr_acc = accuracy_score(y_test, lr_pred)
     print("Logistic Regression Accuracy: {:.4f}".format(lr_acc))
 
-    return lr_acc
+    return lr_acc, lr_pred
 
 
-def train_random_forest(table_name):
-    X_train, X_test, y_train, y_test = get_data(table_name)
+def train_random_forest(df):
+    X_train, X_test, y_train, y_test = get_data(df)
 
     rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
     rf_model.fit(X_train, y_train)
@@ -54,11 +53,11 @@ def train_random_forest(table_name):
     rf_acc = accuracy_score(y_test, rf_pred)
     print("Random Forest Accuracy: {:.4f}".format(rf_acc))
 
-    return rf_acc
+    return rf_acc, rf_pred
 
 
-def gradient_boosted_trees(table_name):
-    X_train, X_test, y_train, y_test = get_data(table_name)
+def gradient_boosted_trees(df):
+    X_train, X_test, y_train, y_test = get_data(df)
 
     gbt_model = GradientBoostingClassifier(n_estimators=100, random_state=42)
     gbt_model.fit(X_train, y_train)
@@ -66,5 +65,5 @@ def gradient_boosted_trees(table_name):
     gbt_acc = accuracy_score(y_test, gbt_pred)
     print("Gradient Boosted Trees Accuracy: {:.4f}".format(gbt_acc))
 
-    return gbt_acc
+    return gbt_acc, gbt_pred
 

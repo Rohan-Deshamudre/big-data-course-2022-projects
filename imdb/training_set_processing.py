@@ -1,24 +1,12 @@
 import pandas as pd
 import numpy as np
-import pyspark
-from pyspark.sql import SparkSession
-from pyspark.sql import Row
-from pyspark.sql.functions import col, when
-from scipy.stats.mstats import winsorize
 import duckdb
-from main import *
+from sklearn.linear_model import LinearRegression
+from imdb.main import *
+from main import con
 
 
-def execute(query):
-    result = con.execute(query).fetchdf()
-    return result
 
-
-def get_table(table_name):
-    query = '''
-        SELECT * FROM ''' + table_name + '''
-    '''
-    return query
 
 
 # def create_training_set_table(table_name, file_name):
@@ -74,22 +62,6 @@ def calculate_missing_runtimeMins(table_name):
     return query
 
 
-def drop_originalTitle(table_name):
-    query = '''
-        ALTER TABLE ''' + table_name + '''
-        DROP COLUMN originalTitle
-    '''
-    return query
-
-
-def drop_column_zero(table_name):
-    query = '''
-        ALTER TABLE ''' + table_name + '''
-        DROP COLUMN column0
-    '''
-    return query
-
-
 def convert_numVotes(table_name):
     query = '''
         UPDATE ''' + table_name + ''' SET numVotes = 0 WHERE numVotes IS NULL;
@@ -98,33 +70,59 @@ def convert_numVotes(table_name):
     return query
 
 
-def calculate_missing_numVotes(table_name):
-    training_set = get_table(table_name)
-    # training_set = training_set.withColumn("numVotes", col("numVotes").cast("float"))
-    df = spark.createDataFrame(training_set)
+def predict_missing_numVotes(input_name):
+    df_train = con.execute('''
+        SELECT * FROM ''' + input_name + '''
+        WHERE numVotes != 0
+    ''').fetchdf()
+    X_train = df_train[['startYear', 'runtimeMinutes']]
+    y_train = df_train['numVotes']
 
-    # Compute the median of the column
-    median_value = df.selectExpr(f"percentile_approx({'numVotes'}, 0.5)").collect()[0][0]
+    df_test = con.execute('''
+        SELECT * FROM ''' + input_name + '''
+        WHERE numVotes = 0
+    ''').fetchdf()
+    X_test = df_test[['startYear', 'runtimeMinutes']]
 
-    # Replace null values with the median
-    df = df.withColumn('numVotes', when(col('numVotes') == 'NaN', median_value).otherwise(col('numVotes')))
+    # Train an SVM classifier
+    model = LinearRegression()
+    model.fit(X_train, y_train)
 
-    # Compute the winsorized mean of the column
-    column = df.select('numVotes').rdd.flatMap(lambda x: x).collect()
-    winsorized_mean = winsorize(column, limits=[0.05, 0.05]).mean()
+    # Make predictions on the test set and evaluate the performance
+    y_pred = model.predict(X_test)
+    preds = [max(0, int(a)) for a in y_pred]
 
-    # Replace null values with winsorized mean
-    df = df.withColumn('numVotes', when(col('numVotes') == 'NaN', winsorized_mean).otherwise(col('numVotes')))
-    pd_training_set = df.toPandas()
+    df = con.execute('''
+        SELECT * FROM ''' + input_name + '''
+    ''').fetchdf()
+
+    df.loc[df['numVotes'] == 0, 'numVotes'] = preds
 
     con.execute('''
-        DROP TABLE IF EXISTS training_set
+        DROP TABLE IF EXISTS ''' + input_name + '''
+    ''')
+    con.execute('''
+        CREATE TABLE ''' + input_name + ''' AS SELECT * FROM df;
     ''')
 
+
+def replace_zeros_numVotes(input_name):
     query = '''
-        CREATE TABLE ''' + table_name + ''' AS SELECT * FROM ''' + pd_training_set + '''
+    UPDATE ''' + input_name + ''' 
+        SET numVotes = (
+          SELECT AVG(numVotes) as mean 
+          FROM ''' + input_name + ''' 
+        )
+    WHERE numVotes = 0;
     '''
 
     return query
 
+
+def drop_originalTitle(table_name):
+    query = '''
+        ALTER TABLE ''' + table_name + '''
+        DROP COLUMN originalTitle
+    '''
+    return query
 
